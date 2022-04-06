@@ -1,4 +1,4 @@
-package pcs
+package srs
 
 import (
 	"bytes"
