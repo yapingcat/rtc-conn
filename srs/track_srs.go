@@ -31,13 +31,6 @@ func payloaderForCodec(codec webrtc.RTPCodecCapability) (rtp.Payloader, error) {
 	}
 }
 
-type trackBinding struct {
-	id          string
-	ssrc        webrtc.SSRC
-	payloadType webrtc.PayloadType
-	writeStream webrtc.TrackLocalWriter
-}
-
 type TrackSRSStaticSample struct {
 	packetizer rtp.Packetizer
 	sequencer  rtp.Sequencer
@@ -78,7 +71,6 @@ func (s *TrackSRSStaticSample) Bind(t webrtc.TrackLocalContext) (webrtc.RTPCodec
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	// We only need one packetizer
 	if s.packetizer != nil {
 		return codec, nil
 	}
@@ -90,9 +82,9 @@ func (s *TrackSRSStaticSample) Bind(t webrtc.TrackLocalContext) (webrtc.RTPCodec
 
 	s.sequencer = rtp.NewRandomSequencer()
 	s.packetizer = rtp.NewPacketizer(
-		1460,
-		0, // Value is handled when writing
-		0, // Value is handled when writing
+		1200,
+		0,
+		0,
 		payloader,
 		s.sequencer,
 		codec.ClockRate,
@@ -122,14 +114,13 @@ func (s *TrackSRSStaticSample) WriteSample(sample media.Sample) error {
 
 	samples := uint32(sample.Duration.Seconds() * clockRate)
 	if sample.PrevDroppedPackets > 0 {
-		p.(rtp.Packetizer).SkipSamples(samples * uint32(sample.PrevDroppedPackets))
+		p.SkipSamples(samples * uint32(sample.PrevDroppedPackets))
 	}
-	packets := p.(rtp.Packetizer).Packetize(sample.Data, samples)
+	packets := p.Packetize(sample.Data, samples)
 
-	writeErrs := []error{}
 	for _, p := range packets {
 		if err := s.rtpTrack.WriteRTP(p); err != nil {
-			writeErrs = append(writeErrs, err)
+			return err
 		}
 	}
 

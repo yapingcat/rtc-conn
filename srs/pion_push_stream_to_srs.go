@@ -229,16 +229,9 @@ func (c *PionSrsConnector) Start() error {
 	return nil
 }
 
-func (c *PionSrsConnector) WriteFrame(trackid int, data []byte, timestamp uint32) error {
+func (c *PionSrsConnector) WriteFrame(trackid int, data []byte, duration int64) error {
 	track := c.tracks[trackid]
-	track.track.WriteSample(media.Sample{Data: data, Duration: time.Millisecond * 40})
-	// pkgs := track.packer.Packetize(data, timestamp*90)
-
-	// for _, p := range pkgs {
-	// 	fmt.Println(p.Timestamp)
-	// 	track.track.WriteRTP(p)
-	// }
-
+	track.track.WriteSample(media.Sample{Data: data, Duration: time.Millisecond * time.Duration(duration)})
 	return nil
 }
 
