@@ -37,6 +37,7 @@ type TrackSRSStaticSample struct {
 	rtpTrack   *webrtc.TrackLocalStaticRTP
 	clockRate  float64
 	mtx        sync.Mutex
+	hookRtp    func(*rtp.Packet)
 }
 
 func NewTrackSRSStaticSample(c webrtc.RTPCodecCapability, id, streamID string, options ...func(*webrtc.TrackLocalStaticRTP)) (*TrackSRSStaticSample, error) {
@@ -119,10 +120,24 @@ func (s *TrackSRSStaticSample) WriteSample(sample media.Sample) error {
 	packets := p.Packetize(sample.Data, samples)
 
 	for _, p := range packets {
+		if s.hookRtp != nil {
+			s.hookRtp(p)
+		}
+		s.mtx.Lock()
+		defer s.mtx.Unlock()
 		if err := s.rtpTrack.WriteRTP(p); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+func (s *TrackSRSStaticSample) WriteRtpPacket(pkg *rtp.Packet) error {
+	s.mtx.Lock()
+	if err := s.rtpTrack.WriteRTP(pkg); err != nil {
+		return err
+	}
+	s.mtx.Unlock()
 	return nil
 }

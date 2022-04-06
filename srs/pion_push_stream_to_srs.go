@@ -13,7 +13,6 @@ import (
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
 )
@@ -65,12 +64,9 @@ type srsPushResponse struct {
 }
 
 type rtcTrack struct {
-	track        *TrackSRSStaticSample
-	sender       *webrtc.RTPSender
-	sendList     []*rtp.Packet
-	listDuration int
-	preTs        uint32
-	packer       rtp.Packetizer
+	track    *TrackSRSStaticSample
+	sender   *webrtc.RTPSender
+	sendList []*rtp.Packet
 }
 
 func (t *rtcTrack) loopRecvRtcp() {
@@ -78,7 +74,6 @@ func (t *rtcTrack) loopRecvRtcp() {
 		if rtcppkgs, _, rtcpErr := t.sender.ReadRTCP(); rtcpErr != nil {
 			return
 		} else {
-			fmt.Println("recv rtcp")
 			for _, pkg := range rtcppkgs {
 				if stringer, canString := pkg.(fmt.Stringer); canString {
 					fmt.Printf("Received RTCP Packet: %v", stringer.String())
@@ -87,6 +82,14 @@ func (t *rtcTrack) loopRecvRtcp() {
 				case *rtcp.TransportLayerNack:
 					fmt.Printf("recv NACK %d\n", v.MediaSSRC)
 					for _, nack := range v.Nacks {
+						seqIds := nack.PacketList()
+						for _, id := range seqIds {
+							for _, pkg := range t.sendList {
+								if pkg.SequenceNumber == id {
+									t.track.WriteRtpPacket(pkg)
+								}
+							}
+						}
 						fmt.Printf("recv nack pkg id %d\n", nack.PacketID)
 					}
 				case *rtcp.PictureLossIndication:
@@ -110,7 +113,6 @@ type PionSrsConnector struct {
 	tracks         map[int]*rtcTrack
 	nextTrackId    int
 	onStateChange  func(RTCTransportState)
-	answer         webrtc.SessionDescription
 }
 
 func NewPionSrsConnector(srsAddr string, app string, streamName string) (c *PionSrsConnector, e error) {
@@ -147,6 +149,20 @@ func (c *PionSrsConnector) AddTrack(cid int) (id int, e error) {
 		return
 	}
 
+	t.track.hookRtp = func(p *rtp.Packet) {
+		t.sendList = append(t.sendList, p)
+		idx := 0
+		for (t.sendList[idx].Timestamp-t.sendList[len(t.sendList)-1].Timestamp)*1000/t.track.Codec().ClockRate > 500 {
+			idx++
+		}
+		if idx == 0 {
+			return
+		}
+		tmplist := make([]*rtp.Packet, 0, cap(t.sendList))
+		copy(tmplist, t.sendList[idx+1:])
+		t.sendList = tmplist
+	}
+
 	t.sender, e = c.peerConnection.AddTrack(t.track)
 	if e != nil {
 		return
@@ -165,11 +181,6 @@ func (c *PionSrsConnector) Start() error {
 			c.stateChange(RTCTransportStateDisconnect)
 		} else if s == webrtc.PeerConnectionStateConnected {
 			for _, track := range c.tracks {
-				track.packer = rtp.NewPacketizer(1460,
-					0, 0,
-					&codecs.H264Payloader{},
-					rtp.NewRandomSequencer(),
-					track.track.Codec().ClockRate)
 				go track.loopRecvRtcp()
 			}
 			c.stateChange(RTCTransportStateConnect)
