@@ -9,11 +9,13 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
 )
 
 const (
@@ -63,7 +65,7 @@ type srsPushResponse struct {
 }
 
 type rtcTrack struct {
-	track        *webrtc.TrackLocalStaticRTP
+	track        *TrackSRSStaticSample
 	sender       *webrtc.RTPSender
 	sendList     []*rtp.Packet
 	listDuration int
@@ -78,6 +80,9 @@ func (t *rtcTrack) loopRecvRtcp() {
 		} else {
 			fmt.Println("recv rtcp")
 			for _, pkg := range rtcppkgs {
+				if stringer, canString := pkg.(fmt.Stringer); canString {
+					fmt.Printf("Received RTCP Packet: %v", stringer.String())
+				}
 				switch v := pkg.(type) {
 				case *rtcp.TransportLayerNack:
 					fmt.Printf("recv NACK %d\n", v.MediaSSRC)
@@ -137,7 +142,7 @@ func (c *PionSrsConnector) OnStateChange(onState func(RTCTransportState)) {
 func (c *PionSrsConnector) AddTrack(cid int) (id int, e error) {
 	t := &rtcTrack{}
 
-	t.track, e = webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000}, "video", "srs")
+	t.track, e = NewTrackSRSStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000}, "video", "srs")
 	if e != nil {
 		return
 	}
@@ -159,7 +164,6 @@ func (c *PionSrsConnector) Start() error {
 		if s == webrtc.PeerConnectionStateFailed {
 			c.stateChange(RTCTransportStateDisconnect)
 		} else if s == webrtc.PeerConnectionStateConnected {
-			c.stateChange(RTCTransportStateConnect)
 			for _, track := range c.tracks {
 				track.packer = rtp.NewPacketizer(1460,
 					0, 0,
@@ -168,6 +172,7 @@ func (c *PionSrsConnector) Start() error {
 					track.track.Codec().ClockRate)
 				go track.loopRecvRtcp()
 			}
+			c.stateChange(RTCTransportStateConnect)
 		}
 	})
 
@@ -226,11 +231,13 @@ func (c *PionSrsConnector) Start() error {
 
 func (c *PionSrsConnector) WriteFrame(trackid int, data []byte, timestamp uint32) error {
 	track := c.tracks[trackid]
-	pkgs := track.packer.Packetize(data, timestamp*90)
+	track.track.WriteSample(media.Sample{Data: data, Duration: time.Millisecond * 40})
+	// pkgs := track.packer.Packetize(data, timestamp*90)
 
-	for _, p := range pkgs {
-		track.track.WriteRTP(p)
-	}
+	// for _, p := range pkgs {
+	// 	fmt.Println(p.Timestamp)
+	// 	track.track.WriteRTP(p)
+	// }
 
 	return nil
 }
