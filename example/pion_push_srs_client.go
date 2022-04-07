@@ -46,7 +46,6 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-
 			cli.WriteFrame(tid, frame.Data, 40)
 		}
 	}()

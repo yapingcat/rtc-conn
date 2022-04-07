@@ -19,7 +19,10 @@ import (
 
 const (
 	H264 = iota + 1
-	//H265
+	H265
+	Opus
+	G711A
+	G711U
 )
 
 type RTCTransportState int
@@ -104,7 +107,7 @@ func (t *rtcTrack) loopRecvRtcp() {
 	}
 }
 
-type PionSrsConnector struct {
+type PionSrsPushConnector struct {
 	srsAddr        *net.TCPAddr
 	app            string //live / vod ...
 	streamName     string //show / tv / sport111
@@ -115,8 +118,8 @@ type PionSrsConnector struct {
 	onStateChange  func(RTCTransportState)
 }
 
-func NewPionSrsConnector(srsAddr string, app string, streamName string) (c *PionSrsConnector, e error) {
-	c = &PionSrsConnector{
+func NewPionSrsPushConnector(srsAddr string, app string, streamName string) (c *PionSrsPushConnector, e error) {
+	c = &PionSrsPushConnector{
 		app:         app,
 		streamName:  streamName,
 		tracks:      make(map[int]*rtcTrack),
@@ -136,12 +139,12 @@ func NewPionSrsConnector(srsAddr string, app string, streamName string) (c *Pion
 	return
 }
 
-func (c *PionSrsConnector) OnStateChange(onState func(RTCTransportState)) {
+func (c *PionSrsPushConnector) OnStateChange(onState func(RTCTransportState)) {
 	c.onStateChange = onState
 }
 
 //
-func (c *PionSrsConnector) AddTrack(cid int) (id int, e error) {
+func (c *PionSrsPushConnector) AddTrack(cid int) (id int, e error) {
 	t := &rtcTrack{}
 
 	t.track, e = NewTrackSRSStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000}, "video", "srs")
@@ -155,6 +158,7 @@ func (c *PionSrsConnector) AddTrack(cid int) (id int, e error) {
 		for (t.sendList[idx].Timestamp-t.sendList[len(t.sendList)-1].Timestamp)*1000/t.track.Codec().ClockRate > 500 {
 			idx++
 		}
+
 		if idx == 0 {
 			return
 		}
@@ -174,7 +178,7 @@ func (c *PionSrsConnector) AddTrack(cid int) (id int, e error) {
 	return
 }
 
-func (c *PionSrsConnector) Start() error {
+func (c *PionSrsPushConnector) Start() error {
 
 	c.peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		if s == webrtc.PeerConnectionStateFailed {
@@ -240,13 +244,17 @@ func (c *PionSrsConnector) Start() error {
 	return nil
 }
 
-func (c *PionSrsConnector) WriteFrame(trackid int, data []byte, duration int64) error {
+func (c *PionSrsPushConnector) Stop() {
+	c.peerConnection.Close()
+}
+
+func (c *PionSrsPushConnector) WriteFrame(trackid int, data []byte, duration int64) error {
 	track := c.tracks[trackid]
 	track.track.WriteSample(media.Sample{Data: data, Duration: time.Millisecond * time.Duration(duration)})
 	return nil
 }
 
-func (c *PionSrsConnector) stateChange(state RTCTransportState) {
+func (c *PionSrsPushConnector) stateChange(state RTCTransportState) {
 	if c.onStateChange != nil {
 		c.onStateChange(state)
 	}
