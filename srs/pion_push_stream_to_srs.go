@@ -115,7 +115,7 @@ type PionSrsPushConnector struct {
 	peerConnection *webrtc.PeerConnection
 	tracks         map[int]*rtcTrack
 	nextTrackId    int
-	onStateChange  func(RTCTransportState)
+	OnStateChange  func(RTCTransportState)
 }
 
 func NewPionSrsPushConnector(srsAddr string, app string, streamName string) (c *PionSrsPushConnector, e error) {
@@ -137,10 +137,6 @@ func NewPionSrsPushConnector(srsAddr string, app string, streamName string) (c *
 		return
 	}
 	return
-}
-
-func (c *PionSrsPushConnector) OnStateChange(onState func(RTCTransportState)) {
-	c.onStateChange = onState
 }
 
 //
@@ -188,6 +184,12 @@ func (c *PionSrsPushConnector) Start() error {
 				go track.loopRecvRtcp()
 			}
 			c.stateChange(RTCTransportStateConnect)
+		} else if s == webrtc.PeerConnectionStateClosed {
+			fmt.Println("peerconnection closed")
+			c.stateChange(RTCTransportStateDisconnect)
+		} else if s == webrtc.PeerConnectionStateDisconnected {
+			fmt.Println("peerconnection disconnect")
+			c.stateChange(RTCTransportStateDisconnect)
 		}
 	})
 
@@ -255,7 +257,7 @@ func (c *PionSrsPushConnector) WriteFrame(trackid int, data []byte, duration int
 }
 
 func (c *PionSrsPushConnector) stateChange(state RTCTransportState) {
-	if c.onStateChange != nil {
-		c.onStateChange(state)
+	if c.OnStateChange != nil {
+		c.OnStateChange(state)
 	}
 }

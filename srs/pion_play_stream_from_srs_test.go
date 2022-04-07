@@ -15,7 +15,8 @@ func TestPionSrsPlayConnector(t *testing.T) {
 			fmt.Println(err)
 			return
 		}
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 40)
+		fmt.Println("stop peerconnection")
 		c.Stop()
 		time.Sleep(time.Second * 20)
 	})

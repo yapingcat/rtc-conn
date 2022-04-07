@@ -11,15 +11,15 @@ import (
 )
 
 func main() {
-	cli, _ := srs.NewPionSrsConnector("49.235.110.177:1985", "live", "show")
+	cli, _ := srs.NewPionSrsPushConnector("49.235.110.177:1985", "live", "show")
 	tid, _ := cli.AddTrack(srs.H264)
 	icedone := make(chan struct{})
-	cli.OnStateChange(func(state srs.RTCTransportState) {
+	cli.OnStateChange = func(state srs.RTCTransportState) {
 		if state == srs.RTCTransportStateConnect {
 			fmt.Println("connect sucessful")
 			close(icedone)
 		}
-	})
+	}
 
 	cli.Start()
 

@@ -39,7 +39,7 @@ type PionSrsPlayConnector struct {
 	streamName     string //show / tv / sport111
 	tid            string //log trace
 	peerConnection *webrtc.PeerConnection
-	onStateChange  func(RTCTransportState)
+	OnStateChange  func(RTCTransportState)
 	OnRtp          func(cid int, pkg *rtp.Packet)
 }
 
@@ -102,35 +102,39 @@ func (c *PionSrsPlayConnector) Start() (startDone chan error) {
 
 		c.peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 			if s == webrtc.PeerConnectionStateFailed {
+				fmt.Println("connect sucessful")
 				c.stateChange(RTCTransportStateDisconnect)
 			} else if s == webrtc.PeerConnectionStateConnected {
 				fmt.Println("connect sucessful")
 				c.stateChange(RTCTransportStateConnect)
+			} else if s == webrtc.PeerConnectionStateClosed {
+				fmt.Println("peerconnection closed")
+				c.stateChange(RTCTransportStateDisconnect)
+			} else if s == webrtc.PeerConnectionStateDisconnected {
+				fmt.Println("peerconnection disconnect")
+				c.stateChange(RTCTransportStateDisconnect)
 			}
 		})
 
 		if _, err = c.peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
-			panic(err)
+			startDone <- err
+			return
 		} else if _, err = c.peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly}); err != nil {
-			panic(err)
+			startDone <- err
+			return
 		}
-
-		// h264track, _ := NewTrackDummyStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264, ClockRate: 90000}, "video", "srs-v")
-		// c.peerConnection.AddTrack(h264track)
-		// opustrack, _ := NewTrackDummyStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000}, "audio", "srs-a")
-		// c.peerConnection.AddTrack(opustrack)
 
 		c.peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 			// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 			fmt.Println("ontrack")
 			go func() {
 				ticker := time.NewTicker(time.Second * 3)
+				defer ticker.Stop()
 				for range ticker.C {
-					// fmt.Println(receiver.Track().SSRC())
-					// fmt.Println(uint32(track.SSRC()))
 					errSend := c.peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}})
 					if errSend != nil {
 						fmt.Println(errSend)
+						break
 					}
 				}
 			}()
@@ -190,8 +194,8 @@ func (c *PionSrsPlayConnector) Start() (startDone chan error) {
 }
 
 func (c *PionSrsPlayConnector) stateChange(state RTCTransportState) {
-	if c.onStateChange != nil {
-		c.onStateChange(state)
+	if c.OnStateChange != nil {
+		c.OnStateChange(state)
 	}
 }
 
